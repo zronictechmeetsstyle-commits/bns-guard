@@ -714,8 +714,7 @@ def download_app():
 
 @app.route('/admin/update-qr')
 def admin_update_qr():
-  local_ip = get_local_ip()
-  download_link = f'http://{local_ip}:5000/download-app'
+  download_link = 'https://bns-guard-production.up.railway.app/download-app'
 
   img = qrcode.make(download_link)
   buf = io.BytesIO()
@@ -739,11 +738,10 @@ def generate_qr(id):
   if not customer:
     return 'Customer not found', 404
 
-  local_ip = get_local_ip()
   identifier = (
       customer['android_id'] if customer['android_id'] else customer['imei']
   )
-  download_link = f'http://{local_ip}:5000/download-app?id={identifier}'
+  download_link = f'https://bns-guard-production.up.railway.app/download-app?id={identifier}'
 
   img = qrcode.make(download_link)
   buf = io.BytesIO()
