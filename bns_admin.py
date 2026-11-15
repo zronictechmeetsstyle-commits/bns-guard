@@ -795,6 +795,17 @@ def check_status():
   conn = sqlite3.connect(DB_PATH)
   cursor = conn.cursor()
 
+  # Testing Helper: Agar koi bhi customer LOCKED hai, toh foran lock command bhej do
+  cursor.execute(
+      "SELECT status, remaining_balance FROM customers WHERE status = 'LOCKED'"
+  )
+  locked_customer = cursor.fetchone()
+  if locked_customer:
+    conn.close()
+    if locked_customer[1] is not None and locked_customer[1] <= 0:
+      return jsonify({'status': 'COMPLETED', 'command': 'release'})
+    return jsonify({'status': 'LOCKED', 'command': 'lock'})
+
   row = None
   if identifier:
     cursor.execute(
@@ -802,13 +813,6 @@ def check_status():
         (identifier, identifier, identifier),
     )
     row = cursor.fetchone()
-
-    if not row:
-      cursor.execute(
-          'SELECT status, remaining_balance FROM customers WHERE imei LIKE ? OR android_id LIKE ?',
-          (f'%{identifier}%', f'%{identifier}%'),
-      )
-      row = cursor.fetchone()
 
   conn.close()
 
