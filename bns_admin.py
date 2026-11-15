@@ -36,7 +36,7 @@ def init_db():
   conn = sqlite3.connect(DB_PATH)
   cursor = conn.cursor()
 
-  # 1. Customers Table Create
+  # 1. Customers Table Create with GPS Columns
   cursor.execute('''
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -755,7 +755,7 @@ def generate_qr(id):
   )
 
 
-# --- 1. NEW GPS LOCATION API ENDPOINT ---
+# --- GPS LOCATION API ENDPOINT ---
 @app.route('/api/update-location', methods=['POST'])
 def update_location():
   data = request.json
@@ -785,7 +785,7 @@ def update_location():
   return jsonify({'status': 'success', 'message': 'Location updated'})
 
 
-# --- 2. INTELLIGENT STATUS & AUTO-RELEASE API ENDPOINT ---
+# --- INTELLIGENT STATUS & AUTO-RELEASE API ENDPOINT ---
 @app.route('/api/check-status', methods=['GET'])
 def check_status():
   identifier = (
@@ -816,7 +816,6 @@ def check_status():
 
   if row:
     status, remaining_balance = row[0], row[1]
-    # Agar remaining balance zero ya minus mein ho jaye, toh auto-release command bhej do!
     if remaining_balance is not None and remaining_balance <= 0:
       return jsonify({'status': 'COMPLETED', 'command': 'release'})
     elif status == 'LOCKED':
