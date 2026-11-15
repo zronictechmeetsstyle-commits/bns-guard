@@ -666,7 +666,7 @@ def print_agreement(id):
             <div class="terms">
                 <ol>
                     <li><strong>وقت پر ادائیگی:</strong> گاہک ہر ماہ کی مقررہ تاریخ پر ماہانہ قسط ادا کرنے کا پابند ہے۔</li>
-                    <li><strong>قانونی کاروائی:</strong> قسط ادا نہ کرنے یا تاخیر پر BNS Traders موبائل کو فوری لاک کرنے اور قانونی چارہ جوئی کا حق رکھتا ہے۔</li>
+                    <li><strong>قانونی کاروائی:</strong> قسط ادا نہ کرنے یا تاخیر پر BNS Traders موبائل کو فوری لاک کرنے اور قانونی چارہ جوئی کا حق रखता ہے۔</li>
                     <li><strong>چوری یا گم ہونے کی ذمہ داری:</strong> موبائل چوری یا گم ہونے کی صورت میں بھی قسط معاف نہیں ہوگی، کل بقایا جات ادا کرنا ہوں گے۔</li>
                 </ol>
             </div>
@@ -783,7 +783,7 @@ def update_location():
   return jsonify({'status': 'success', 'message': 'Location updated'})
 
 
-# --- INTELLIGENT STATUS & AUTO-RELEASE API ENDPOINT ---
+# --- CORRECTED STATUS & TARGETED API ENDPOINT ---
 @app.route('/api/check-status', methods=['GET'])
 def check_status():
   identifier = (
@@ -792,28 +792,18 @@ def check_status():
       or request.args.get('android_id')
   )
 
+  if not identifier:
+    return jsonify({'status': 'ACTIVE', 'command': 'unlock'})
+
   conn = sqlite3.connect(DB_PATH)
   cursor = conn.cursor()
 
-  # Testing Helper: Agar koi bhi customer LOCKED hai, toh foran lock command bhej do
+  # Sirf usi specific customer/IMEI ko check karein jo request bhej raha hai (No global lock bug)
   cursor.execute(
-      "SELECT status, remaining_balance FROM customers WHERE status = 'LOCKED'"
+      'SELECT status, remaining_balance FROM customers WHERE id = ? OR imei = ? OR android_id = ?',
+      (identifier, identifier, identifier),
   )
-  locked_customer = cursor.fetchone()
-  if locked_customer:
-    conn.close()
-    if locked_customer[1] is not None and locked_customer[1] <= 0:
-      return jsonify({'status': 'COMPLETED', 'command': 'release'})
-    return jsonify({'status': 'LOCKED', 'command': 'lock'})
-
-  row = None
-  if identifier:
-    cursor.execute(
-        'SELECT status, remaining_balance FROM customers WHERE id = ? OR imei = ? OR android_id = ?',
-        (identifier, identifier, identifier),
-    )
-    row = cursor.fetchone()
-
+  row = cursor.fetchone()
   conn.close()
 
   if row:
@@ -823,6 +813,7 @@ def check_status():
     elif status == 'LOCKED':
       return jsonify({'status': 'LOCKED', 'command': 'lock'})
 
+  # Default: Agar record active hai ya nahi milta toh unlock bhejo
   return jsonify({'status': 'ACTIVE', 'command': 'unlock'})
 
 
