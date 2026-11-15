@@ -50,15 +50,21 @@ def init_db():
             remaining_balance REAL NOT NULL,
             monthly_installment REAL NOT NULL,
             due_date TEXT NOT NULL,
-            status TEXT DEFAULT 'ACTIVE'
+            status TEXT DEFAULT 'ACTIVE',
+            latitude TEXT,
+            longitude TEXT
         )
     ''')
 
-  # Safe Migration: Check if 'android_id' column exists in older database, if not, add it automatically
+  # Safe Migration: Check if missing columns exist in older database, add them automatically
   cursor.execute("PRAGMA table_info(customers)")
   columns = [col[1] for col in cursor.fetchall()]
   if 'android_id' not in columns:
     cursor.execute('ALTER TABLE customers ADD COLUMN android_id TEXT')
+  if 'latitude' not in columns:
+    cursor.execute('ALTER TABLE customers ADD COLUMN latitude TEXT')
+  if 'longitude' not in columns:
+    cursor.execute('ALTER TABLE customers ADD COLUMN longitude TEXT')
 
   # 2. Customer Details Table Create
   cursor.execute('''
@@ -195,6 +201,7 @@ def index():
                 <th>Remaining</th>
                 <th>Monthly Inst.</th>
                 <th>Due Date</th>
+                <th>GPS Location</th>
                 <th>Status</th>
                 <th>Actions</th>
             </tr>
@@ -211,6 +218,13 @@ def index():
                 <td class="highlight">Rs. {{ c['remaining_balance'] }}</td>
                 <td class="inst-highlight">Rs. {{ "%.2f"|format(c['monthly_installment']) }}</td>
                 <td>{{ c['due_date'] }}</td>
+                <td>
+                    {% if c['latitude'] and c['longitude'] %}
+                        <a href="https://maps.google.com/?q={{ c['latitude'] }},{{ c['longitude'] }}" target="_blank" style="background: #e83e8c; color: white; padding: 4px 8px; border-radius: 3px; text-decoration: none; font-size: 11px;">📍 View Map</a>
+                    {% else %}
+                        <span style="color: #777; font-size: 11px;">No Signal</span>
+                    {% endif %}
+                </td>
                 <td>
                     {% if c['status'] == 'ACTIVE' %}
                         <span class="badge-active">ACTIVE</span>
@@ -229,7 +243,7 @@ def index():
             </tr>
             {% else %}
             <tr>
-                <td colspan="13" style="color: #777; padding: 20px;">No customers found.</td>
+                <td colspan="14" style="color: #777; padding: 20px;">No customers found.</td>
             </tr>
             {% endfor %}
         </table>
@@ -741,6 +755,37 @@ def generate_qr(id):
   )
 
 
+# --- 1. NEW GPS LOCATION API ENDPOINT ---
+@app.route('/api/update-location', methods=['POST'])
+def update_location():
+  data = request.json
+  if not data:
+    return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+  identifier = data.get('id') or data.get('imei') or data.get('android_id')
+  latitude = data.get('latitude')
+  longitude = data.get('longitude')
+
+  if not identifier:
+    return jsonify({'status': 'error', 'message': 'Identifier missing'}), 400
+
+  conn = sqlite3.connect(DB_PATH)
+  cursor = conn.cursor()
+  cursor.execute(
+      '''
+        UPDATE customers 
+        SET latitude = ?, longitude = ? 
+        WHERE id = ? OR imei = ? OR android_id = ?
+    ''',
+      (latitude, longitude, identifier, identifier, identifier),
+  )
+  conn.commit()
+  conn.close()
+
+  return jsonify({'status': 'success', 'message': 'Location updated'})
+
+
+# --- 2. INTELLIGENT STATUS & AUTO-RELEASE API ENDPOINT ---
 @app.route('/api/check-status', methods=['GET'])
 def check_status():
   identifier = (
@@ -754,28 +799,30 @@ def check_status():
 
   row = None
   if identifier:
-    # 1. Exact match
     cursor.execute(
-        'SELECT status FROM customers WHERE id = ? OR imei = ? OR android_id = ?',
+        'SELECT status, remaining_balance FROM customers WHERE id = ? OR imei = ? OR android_id = ?',
         (identifier, identifier, identifier),
     )
     row = cursor.fetchone()
 
-    # 2. Partial match
     if not row:
       cursor.execute(
-          'SELECT status FROM customers WHERE imei LIKE ? OR android_id LIKE ?',
+          'SELECT status, remaining_balance FROM customers WHERE imei LIKE ? OR android_id LIKE ?',
           (f'%{identifier}%', f'%{identifier}%'),
       )
       row = cursor.fetchone()
 
-  # خطرناک فالব্যাক (LIMIT 1) یہاں سے مکمل طور پر ہٹا دیا گیا ہے تاکہ غلط یا رینڈم ڈیوائس لاک نہ ہو!
   conn.close()
 
-  if row and row[0] == 'LOCKED':
-    return jsonify({'status': 'LOCKED'})
-  else:
-    return jsonify({'status': 'ACTIVE'})
+  if row:
+    status, remaining_balance = row[0], row[1]
+    # Agar remaining balance zero ya minus mein ho jaye, toh auto-release command bhej do!
+    if remaining_balance is not None and remaining_balance <= 0:
+      return jsonify({'status': 'COMPLETED', 'command': 'release'})
+    elif status == 'LOCKED':
+      return jsonify({'status': 'LOCKED', 'command': 'lock'})
+
+  return jsonify({'status': 'ACTIVE', 'command': 'unlock'})
 
 
 if __name__ == '__main__':
