@@ -12,7 +12,6 @@ from flask import (
     send_file,
     url_for,
 )
-import qrcode
 
 app = Flask(__name__)
 
@@ -142,17 +141,17 @@ def index():
             .badge-locked { color: red; font-weight: bold; }
             .highlight { background-color: #fff3cd; font-weight: bold; }
             .inst-highlight { background-color: #d4edda; font-weight: bold; color: #155724; }
-            .btn-action { text-decoration: none; padding: 6px 10px; color: white; border-radius: 3px; font-size: 11px; display: inline-block; margin: 2px; }
+            .btn-action { text-decoration: none; padding: 6px 10px; color: white; border-radius: 3px; font-size: 11px; display: inline-block; margin: 2px; border: none; cursor: pointer; }
             .btn-delete { background: #dc3545; }
             .btn-delete:hover { background: #c82333; }
-            .top-actions { margin-bottom: 15px; }
+            .top-actions { margin-bottom: 15px; display: flex; gap: 10px; }
         </style>
     </head>
     <body>
         <h2>BNS-GUARD-01 - Admin Dashboard & Portfolio Control</h2>
         
         <div class="top-actions">
-            <a href="/admin/update-qr" target="_blank" style="background: #17a2b8; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">📱 Get Master App Update QR</a>
+            <a href="/download-app" style="background: #17a2b8; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">📥 Download Master APK</a>
         </div>
 
         <div class="search-section">
@@ -221,12 +220,12 @@ def index():
                     {% endif %}
                 </td>
                 <td>
-                    <a href="/portfolio/{{ c['id'] }}" class="btn-action" style="background: #007bff;">Portfolio</a>
+                    <a href="/admin/edit/{{ c['id'] }}" class="btn-action" style="background: #007bff;">Edit</a>
+                    <a href="/portfolio/{{ c['id'] }}" class="btn-action" style="background: #6f42c1;">Portfolio</a>
                     <a href="/customer/{{ c['id'] }}" class="btn-action" style="background: #17a2b8;">Details</a>
-                    <a href="/print/{{ c['id'] }}" class="btn-action" style="background: #6f42c1;" target="_blank">Print</a>
-                    <a href="/qrcode/{{ c['id'] }}" class="btn-action" style="background: #20c997;" target="_blank">Get QR</a>
+                    <a href="/print/{{ c['id'] }}" class="btn-action" style="background: #343a40;" target="_blank">Print</a>
                     <a href="/toggle/{{ c['id'] }}" class="btn-action" style="background: #ffc107; color: black;">{% if c['status'] == 'ACTIVE' %}Lock{% else %}Unlock{% endif %}</a>
-                    <a href="/delete/{{ c['id'] }}" class="btn-action btn-delete" onclick="return confirm('Are you sure you want to delete this customer entry?')">Delete</a>
+                    <button type="button" class="btn-action btn-delete" onclick="secureDelete('{{ c['id'] }}')">Delete</button>
                 </td>
             </tr>
             {% else %}
@@ -235,6 +234,17 @@ def index():
             </tr>
             {% endfor %}
         </table>
+
+        <script>
+        function secureDelete(customerId) {
+            let password = prompt("⚠️ Security Warning: Yeh entry delete karne ke liye Master Password enter karein:");
+            if (password === "Imk786787") {
+                window.location.href = "/delete/" + customerId;
+            } else if (password !== null) {
+                alert("❌ Ghalat Password! Aapko yeh entry delete karne ki ijazat nahi hai.");
+            }
+        }
+        </script>
     </body>
     </html>
     """
@@ -282,6 +292,131 @@ def add_customer():
   conn.commit()
   conn.close()
   return redirect(url_for('index'))
+
+
+# --- EDIT CUSTOMER ROUTE ---
+@app.route('/admin/edit/<int:id>', methods=['GET', 'POST'])
+def edit_customer(id):
+  conn = sqlite3.connect(DB_PATH)
+  conn.row_factory = sqlite3.Row
+  cursor = conn.cursor()
+
+  if request.method == 'POST':
+    name = request.form['name']
+    phone_model = request.form['phone_model']
+    imei = request.form['imei']
+    total_price = float(request.form['total_price'])
+    advance_paid = float(request.form['advance_paid'])
+    months = int(request.form['months'])
+    remaining_balance = float(request.form['remaining_balance'])
+    monthly_installment = float(request.form['monthly_installment'])
+    due_date = request.form['due_date']
+    status = request.form['status']
+
+    cursor.execute(
+        '''
+        UPDATE customers 
+        SET name = ?, phone_model = ?, imei = ?, total_price = ?, advance_paid = ?, 
+            months = ?, remaining_balance = ?, monthly_installment = ?, due_date = ?, status = ?
+        WHERE id = ?
+    ''',
+        (
+            name,
+            phone_model,
+            imei,
+            total_price,
+            advance_paid,
+            months,
+            remaining_balance,
+            monthly_installment,
+            due_date,
+            status,
+            id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
+
+  cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
+  customer = cursor.fetchone()
+  conn.close()
+
+  if not customer:
+    return 'Customer not found', 404
+
+  html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Edit Customer</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
+            .card { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
+            h2 { color: #007bff; margin-top: 0; }
+            form { display: grid; gap: 15px; }
+            input, select { padding: 12px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
+            button { background: #28a745; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 4px; font-size: 16px; }
+            button:hover { background: #218838; }
+            .back-link { display: inline-block; margin-top: 15px; text-decoration: none; color: #007bff; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>Edit Customer Details</h2>
+            <form method="POST">
+                <div>
+                    <label><strong>Name:</strong></label>
+                    <input type="text" name="name" value="{{ customer['name'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Phone Model:</strong></label>
+                    <input type="text" name="phone_model" value="{{ customer['phone_model'] }}" required>
+                </div>
+                <div>
+                    <label><strong>IMEI / ID:</strong></label>
+                    <input type="text" name="imei" value="{{ customer['imei'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Total Price:</strong></label>
+                    <input type="number" step="any" name="total_price" value="{{ customer['total_price'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Advance Paid:</strong></label>
+                    <input type="number" step="any" name="advance_paid" value="{{ customer['advance_paid'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Months:</strong></label>
+                    <input type="number" name="months" value="{{ customer['months'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Remaining Balance:</strong></label>
+                    <input type="number" step="any" name="remaining_balance" value="{{ customer['remaining_balance'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Monthly Installment:</strong></label>
+                    <input type="number" step="any" name="monthly_installment" value="{{ customer['monthly_installment'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Due Date:</strong></label>
+                    <input type="date" name="due_date" value="{{ customer['due_date'] }}" required>
+                </div>
+                <div>
+                    <label><strong>Status:</strong></label>
+                    <select name="status">
+                        <option value="ACTIVE" {% if customer['status'] == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
+                        <option value="LOCKED" {% if customer['status'] == 'LOCKED' %}selected{% endif %}>LOCKED</option>
+                    </select>
+                </div>
+                <button type="submit">Update Customer</button>
+            </form>
+            <a href="/" class="back-link">&larr; Back to Dashboard</a>
+        </div>
+    </body>
+    </html>
+    """
+  return render_template_string(html_template, customer=customer)
 
 
 @app.route('/customer/<int:id>', methods=['GET', 'POST'])
@@ -352,7 +487,7 @@ def customer_details(id):
         <meta charset="UTF-8">
         <title>Customer Details</title>
         <style>
-            body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; direction: ltr; }
+            body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
             .card { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
             h2 { color: #007bff; margin-top: 0; }
             .info-box { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
@@ -441,29 +576,6 @@ def download_app():
     return f'APK not found: {e}', 404
 
 
-@app.route('/admin/update-qr')
-def admin_update_qr():
-  download_link = 'https://bns-guard-production.up.railway.app/download-app'
-  img = qrcode.make(download_link)
-  buf = io.BytesIO()
-  img.save(buf, format='PNG')
-  buf.seek(0)
-  return send_file(buf, mimetype='image/png', as_attachment=False)
-
-
-# --- UNIQUE CUSTOMER QR CODE GENERATOR ---
-@app.route('/qrcode/<int:id>')
-def generate_qr(id):
-  download_link = f'https://bns-guard-production.up.railway.app/download-app?customer_id={id}'
-  img = qrcode.make(download_link)
-  buf = io.BytesIO()
-  img.save(buf, format='PNG')
-  buf.seek(0)
-  return send_file(
-      buf, mimetype='image/png', as_attachment=False, download_name=f'customer_{id}_qr.png'
-  )
-
-
 # --- AUTO-BINDING & STATUS CHECK ENDPOINT ---
 @app.route('/api/check-status', methods=['GET'])
 def check_status():
@@ -526,26 +638,22 @@ def update_location():
   conn = sqlite3.connect(DB_PATH)
   cursor = conn.cursor()
 
-  # 1. Check karein ke kya yeh android_id pehle se database mein mojood hai
   row_exists = None
   if android_id:
     cursor.execute('SELECT id FROM customers WHERE LOWER(TRIM(android_id)) = LOWER(?)', (str(android_id).strip(),))
     row_exists = cursor.fetchone()
 
   if customer_id:
-    # Agar QR code se customer_id mila hai, toh us row par android_id bind kar do
     cursor.execute(
         'UPDATE customers SET android_id = ?, latitude = ?, longitude = ? WHERE id = ?',
         (android_id, latitude, longitude, customer_id),
     )
   elif row_exists:
-    # Agar device pehle se registered hai, toh sirf location update karo
     cursor.execute(
         'UPDATE customers SET latitude = ?, longitude = ? WHERE LOWER(TRIM(android_id)) = LOWER(?)',
         (latitude, longitude, str(android_id).strip()),
     )
   else:
-    # Agar bilkul naya unlinked device hai, toh usay automatically panel par show karne ke liye insert kar lo!
     cursor.execute(
         '''
         INSERT INTO customers (name, phone_model, imei, android_id, total_price, advance_paid, months, remaining_balance, monthly_installment, due_date, status, latitude, longitude)
