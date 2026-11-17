@@ -15,7 +15,6 @@ from flask import (
 
 app = Flask(__name__)
 
-# Correct absolute path for SQLite database in the script's folder
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'bns_guard.db')
 
@@ -24,7 +23,6 @@ def init_db():
   conn = sqlite3.connect(DB_PATH)
   cursor = conn.cursor()
 
-  # 1. Customers Table Create with GPS Columns
   cursor.execute('''
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +42,6 @@ def init_db():
         )
     ''')
 
-  # Safe Migration: Check if missing columns exist in older database, add them automatically
   cursor.execute("PRAGMA table_info(customers)")
   columns = [col[1] for col in cursor.fetchall()]
   if 'android_id' not in columns:
@@ -54,7 +51,6 @@ def init_db():
   if 'longitude' not in columns:
     cursor.execute('ALTER TABLE customers ADD COLUMN longitude TEXT')
 
-  # 2. Customer Details Table Create
   cursor.execute('''
         CREATE TABLE IF NOT EXISTS customer_details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +65,6 @@ def init_db():
         )
     ''')
 
-  # 3. Payments Table Create
   cursor.execute('''
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -294,7 +289,6 @@ def add_customer():
   return redirect(url_for('index'))
 
 
-# --- EDIT CUSTOMER ROUTE ---
 @app.route('/admin/edit/<int:id>', methods=['GET', 'POST'])
 def edit_customer(id):
   conn = sqlite3.connect(DB_PATH)
@@ -419,127 +413,6 @@ def edit_customer(id):
   return render_template_string(html_template, customer=customer)
 
 
-@app.route('/customer/<int:id>', methods=['GET', 'POST'])
-def customer_details(id):
-  conn = sqlite3.connect(DB_PATH)
-  conn.row_factory = sqlite3.Row
-  cursor = conn.cursor()
-
-  if request.method == 'POST':
-    customer_phone = request.form['customer_phone']
-    nic = request.form['nic_number']
-    witness_name = request.form['witness_name']
-    witness_phone = request.form['witness_phone']
-    address = request.form['address']
-    notes = request.form['notes']
-
-    cursor.execute(
-        'SELECT id FROM customer_details WHERE customer_id = ?', (id,)
-    )
-    exists = cursor.fetchone()
-
-    if exists:
-      cursor.execute(
-          '''
-                UPDATE customer_details SET customer_phone=?, nic_number=?, witness_name=?, witness_phone=?, address=?, notes=?
-                WHERE customer_id=?
-            ''',
-          (
-              customer_phone,
-              nic,
-              witness_name,
-              witness_phone,
-              address,
-              notes,
-              id,
-          ),
-      )
-    else:
-      cursor.execute(
-          '''
-                INSERT INTO customer_details (customer_id, customer_phone, nic_number, witness_name, witness_phone, address, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''',
-          (
-              id,
-              customer_phone,
-              nic,
-              witness_name,
-              witness_phone,
-              address,
-              notes,
-          ),
-      )
-    conn.commit()
-    conn.close()
-    return redirect(url_for('index'))
-
-  cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
-  customer = cursor.fetchone()
-  cursor.execute('SELECT * FROM customer_details WHERE customer_id = ?', (id,))
-  details = cursor.fetchone()
-  conn.close()
-
-  html_template = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Customer Details</title>
-        <style>
-            body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
-            .card { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-            h2 { color: #007bff; margin-top: 0; }
-            .info-box { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            form { display: grid; gap: 15px; }
-            input, textarea { padding: 12px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
-            button { background: #28a745; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 4px; font-size: 16px; }
-            button:hover { background: #218838; }
-            .back-link { display: inline-block; margin-top: 15px; text-decoration: none; color: #007bff; }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h2>Customer Verification & Contact Details</h2>
-            <div class="info-box">
-                <p><strong>Customer Name:</strong> {{ customer['name'] }}</p>
-                <p><strong>Phone Model:</strong> {{ customer['phone_model'] }}</p>
-            </div>
-            <form method="POST">
-                <div>
-                    <label><strong>Customer Phone Number:</strong></label>
-                    <input type="text" name="customer_phone" value="{{ details['customer_phone'] if details else '' }}" placeholder="0300-1234567" required>
-                </div>
-                <div>
-                    <label><strong>Customer NIC Number:</strong></label>
-                    <input type="text" name="nic_number" value="{{ details['nic_number'] if details else '' }}" placeholder="42101-1234567-1" required>
-                </div>
-                <div>
-                    <label><strong>Witness Name:</strong></label>
-                    <input type="text" name="witness_name" value="{{ details['witness_name'] if details else '' }}" placeholder="Witness Name" required>
-                </div>
-                <div>
-                    <label><strong>Witness Phone Number:</strong></label>
-                    <input type="text" name="witness_phone" value="{{ details['witness_phone'] if details else '' }}" placeholder="Witness Phone" required>
-                </div>
-                <div>
-                    <label><strong>Complete Address:</strong></label>
-                    <textarea name="address" rows="3" required>{{ details['address'] if details else '' }}</textarea>
-                </div>
-                <div>
-                    <label><strong>Notes:</strong></label>
-                    <textarea name="notes" rows="2">{{ details['notes'] if details else '' }}</textarea>
-                </div>
-                <button type="submit">Save Details</button>
-            </form>
-            <a href="/" class="back-link">&larr; Back to Dashboard</a>
-        </div>
-    </body>
-    </html>
-    """
-  return render_template_string(html_template, customer=customer, details=details)
-
-
 @app.route('/delete/<int:id>')
 def delete_customer(id):
   conn = sqlite3.connect(DB_PATH)
@@ -576,7 +449,6 @@ def download_app():
     return f'APK not found: {e}', 404
 
 
-# --- AUTO-BINDING & STATUS CHECK ENDPOINT ---
 @app.route('/api/check-status', methods=['GET'])
 def check_status():
   identifier = (
@@ -623,7 +495,6 @@ def check_status():
   return jsonify({'status': 'ACTIVE', 'command': 'unlock'})
 
 
-# --- DEVICE BINDING & GPS LOCATION API ENDPOINT ---
 @app.route('/api/update-location', methods=['POST'])
 def update_location():
   data = request.json or {}
@@ -640,7 +511,10 @@ def update_location():
 
   row_exists = None
   if android_id:
-    cursor.execute('SELECT id FROM customers WHERE LOWER(TRIM(android_id)) = LOWER(?)', (str(android_id).strip(),))
+    cursor.execute(
+        'SELECT id FROM customers WHERE LOWER(TRIM(android_id)) = LOWER(?)',
+        (str(android_id).strip(),),
+    )
     row_exists = cursor.fetchone()
 
   if customer_id:
@@ -661,17 +535,17 @@ def update_location():
     ''',
         (
             f"Auto Device {str(android_id)[:6] if android_id else 'Unknown'}",
-            "Android Device",
-            str(android_id) if android_id else "AUTO",
+            'Android Device',
+            str(android_id) if android_id else 'AUTO',
             android_id,
             0.0,
             0.0,
             1,
+            25000.0,  # Default balance 25000 rakha hai taake 0 ki waja se app close na ho
             0.0,
-            0.0,
-            "2026-12-31",
+            '2026-12-31',
             latitude,
-            longitude
+            longitude,
         ),
     )
 
