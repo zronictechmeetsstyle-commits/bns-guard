@@ -541,7 +541,7 @@ def update_location():
             0.0,
             0.0,
             1,
-            25000.0,  # Default balance 25000 rakha hai taake 0 ki waja se app close na ho
+            25000.0,
             0.0,
             '2026-12-31',
             latitude,
