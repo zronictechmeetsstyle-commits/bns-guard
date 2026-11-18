@@ -97,9 +97,10 @@ def index():
         '''
             SELECT DISTINCT c.* FROM customers c 
             LEFT JOIN customer_details d ON c.id = d.customer_id
-            WHERE c.name LIKE ? OR c.imei LIKE ? OR c.android_id LIKE ? OR d.customer_phone LIKE ?
+            WHERE c.name LIKE ? OR c.imei LIKE ? OR c.android_id LIKE ? OR d.customer_phone LIKE ? OR d.nic_number LIKE ?
         ''',
         (
+            f'%{search_query}%',
             f'%{search_query}%',
             f'%{search_query}%',
             f'%{search_query}%',
@@ -125,7 +126,7 @@ def index():
             th, td { padding: 10px; border: 1px solid #ddd; text-align: center; font-size: 14px; }
             th { background-color: #007bff; color: white; }
             form { background: #fff; padding: 20px; margin-top: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 5px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-            input, select, textarea { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+            input, select, textarea { padding: 10px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
             button { background: #28a745; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; font-size: 16px; }
             button:hover { background: #218838; }
             .search-section { background: #fff; padding: 15px; margin-top: 15px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
@@ -140,6 +141,7 @@ def index():
             .btn-delete { background: #dc3545; }
             .btn-delete:hover { background: #c82333; }
             .top-actions { margin-bottom: 15px; display: flex; gap: 10px; }
+            .section-title { grid-column: span 4; background: #e9ecef; padding: 8px; font-weight: bold; color: #495057; border-radius: 4px; margin-top: 5px; }
         </style>
     </head>
     <body>
@@ -151,7 +153,7 @@ def index():
 
         <div class="search-section">
             <form class="search-form" method="GET" action="/">
-                <input type="text" name="search" placeholder="Search customer by Name, IMEI, Android ID, or Phone..." value="{{ request.args.get('search', '') }}">
+                <input type="text" name="search" placeholder="Search customer by Name, IMEI, Android ID, Phone, or NIC..." value="{{ request.args.get('search', '') }}">
                 <button type="submit">Search</button>
                 {% if request.args.get('search') %}
                     <a href="/" style="background: #6c757d; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; font-size: 14px;">Reset</a>
@@ -160,20 +162,31 @@ def index():
         </div>
 
         <form action="/add" method="POST">
-            <input type="text" name="name" placeholder="Customer Name" required>
+            <div class="section-title">📱 Phone & Financial Details</div>
+            <input type="text" name="name" placeholder="Customer Full Name" required>
             <input type="text" name="phone_model" placeholder="Phone Model" required>
             <input type="text" name="imei" placeholder="IMEI / Initial ID (Optional)" value="AUTO">
+            <input type="date" name="due_date" required>
             <input type="number" step="any" name="total_price" placeholder="Total Price (e.g. 43000)" required>
             <input type="number" step="any" name="advance_paid" placeholder="Advance / Down Payment" required>
             <input type="number" name="months" placeholder="Installment Months (e.g. 6)" required>
-            <input type="date" name="due_date" required>
-            <button type="submit" style="grid-column: span 4;">Calculate & Save Customer</button>
+            <div></div> <!-- empty grid space -->
+
+            <div class="section-title">👤 Customer Bio & Witness Verification Details</div>
+            <input type="text" name="customer_phone" placeholder="Customer Mobile Number" required>
+            <input type="text" name="nic_number" placeholder="Customer NIC No (e.g. 42101-1234567-1)" required>
+            <input type="text" name="witness_name" placeholder="Witness Full Name" required>
+            <input type="text" name="witness_phone" placeholder="Witness Mobile Number" required>
+            <textarea name="address" placeholder="Customer Home Address" style="grid-column: span 2;" rows="2" required></textarea>
+            <textarea name="notes" placeholder="Additional Notes / Guarantee Remarks" style="grid-column: span 2;" rows="2"></textarea>
+            
+            <button type="submit" style="grid-column: span 4;">Calculate & Save Customer with Full Bio</button>
         </form>
 
         <table>
             <tr>
                 <th>ID</th>
-                <th>Name</th>
+                <th>Name & Phone</th>
                 <th>Model</th>
                 <th>IMEI / ID</th>
                 <th>Android ID</th>
@@ -190,10 +203,10 @@ def index():
             {% for c in customers %}
             <tr>
                 <td>{{ c['id'] }}</td>
-                <td>{{ c['name'] }}</td>
+                <td><b>{{ c['name'] }}</b></td>
                 <td>{{ c['phone_model'] }}</td>
                 <td>{{ c['imei'] }}</td>
-                <td>{{ c['android_id'] if c['android_id'] else 'Not Linked Yet' }}</td>
+                <td>{{ c['android_id'] if c['android_id'] else 'Not Linked' }}</td>
                 <td>Rs. {{ c['total_price'] }}</td>
                 <td>Rs. {{ c['advance_paid'] }}</td>
                 <td>{{ c['months'] }} Months</td>
@@ -216,7 +229,6 @@ def index():
                 </td>
                 <td>
                     <a href="/admin/edit/{{ c['id'] }}" class="btn-action" style="background: #007bff;">Edit</a>
-                    <a href="/portfolio/{{ c['id'] }}" class="btn-action" style="background: #6f42c1;">Portfolio</a>
                     <a href="/customer/{{ c['id'] }}" class="btn-action" style="background: #17a2b8;">Details</a>
                     <a href="/print/{{ c['id'] }}" class="btn-action" style="background: #343a40;" target="_blank">Print</a>
                     <a href="/toggle/{{ c['id'] }}" class="btn-action" style="background: #ffc107; color: black;">{% if c['status'] == 'ACTIVE' %}Lock{% else %}Unlock{% endif %}</a>
@@ -253,8 +265,15 @@ def add_customer():
   imei = request.form.get('imei', 'AUTO').strip()
   base_price = float(request.form['total_price'])
   advance_paid = float(request.form['advance_paid'])
-  months = int(request.form['months'])
+  months = int(request.months or request.form['months'])
   due_date = request.form['due_date']
+
+  customer_phone = request.form.get('customer_phone', '')
+  nic_number = request.form.get('nic_number', '')
+  witness_name = request.form.get('witness_name', '')
+  witness_phone = request.form.get('witness_phone', '')
+  address = request.form.get('address', '')
+  notes = request.form.get('notes', '')
 
   if months <= 3:
     profit = base_price * 0.15
@@ -284,6 +303,24 @@ def add_customer():
           due_date,
       ),
   )
+  customer_id = cursor.lastrowid
+
+  cursor.execute(
+      '''
+        INSERT INTO customer_details (customer_id, customer_phone, nic_number, witness_name, witness_phone, address, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''',
+      (
+          customer_id,
+          customer_phone,
+          nic_number,
+          witness_name,
+          witness_phone,
+          address,
+          notes,
+      ),
+  )
+
   conn.commit()
   conn.close()
   return redirect(url_for('index'))
@@ -307,6 +344,13 @@ def edit_customer(id):
     due_date = request.form['due_date']
     status = request.form['status']
 
+    customer_phone = request.form.get('customer_phone', '')
+    nic_number = request.form.get('nic_number', '')
+    witness_name = request.form.get('witness_name', '')
+    witness_phone = request.form.get('witness_phone', '')
+    address = request.form.get('address', '')
+    notes = request.form.get('notes', '')
+
     cursor.execute(
         '''
         UPDATE customers 
@@ -328,12 +372,52 @@ def edit_customer(id):
             id,
         ),
     )
+
+    cursor.execute(
+        'SELECT id FROM customer_details WHERE customer_id = ?', (id,)
+    )
+    if cursor.fetchone():
+      cursor.execute(
+          '''
+            UPDATE customer_details 
+            SET customer_phone = ?, nic_number = ?, witness_name = ?, witness_phone = ?, address = ?, notes = ?
+            WHERE customer_id = ?
+        ''',
+          (
+              customer_phone,
+              nic_number,
+              witness_name,
+              witness_phone,
+              address,
+              notes,
+              id,
+          ),
+      )
+    else:
+      cursor.execute(
+          '''
+            INSERT INTO customer_details (customer_id, customer_phone, nic_number, witness_name, witness_phone, address, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''',
+          (
+              id,
+              customer_phone,
+              nic_number,
+              witness_name,
+              witness_phone,
+              address,
+              notes,
+          ),
+      )
+
     conn.commit()
     conn.close()
     return redirect(url_for('index'))
 
   cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
   customer = cursor.fetchone()
+  cursor.execute('SELECT * FROM customer_details WHERE customer_id = ?', (id,))
+  details = cursor.fetchone()
   conn.close()
 
   if not customer:
@@ -344,29 +428,41 @@ def edit_customer(id):
     <!DOCTYPE html>
     <html lang="en">
     <head><meta charset="UTF-8"><title>Edit Customer</title></head>
-    <body style="font-family: Arial; padding: 20px;">
-        <h2>Edit Customer Details</h2>
-        <form method="POST">
-            <input type="text" name="name" value="{{ customer['name'] }}" required><br><br>
-            <input type="text" name="phone_model" value="{{ customer['phone_model'] }}" required><br><br>
-            <input type="text" name="imei" value="{{ customer['imei'] }}" required><br><br>
-            <input type="number" step="any" name="total_price" value="{{ customer['total_price'] }}" required><br><br>
-            <input type="number" step="any" name="advance_paid" value="{{ customer['advance_paid'] }}" required><br><br>
-            <input type="number" name="months" value="{{ customer['months'] }}" required><br><br>
-            <input type="number" step="any" name="remaining_balance" value="{{ customer['remaining_balance'] }}" required><br><br>
-            <input type="number" step="any" name="monthly_installment" value="{{ customer['monthly_installment'] }}" required><br><br>
-            <input type="date" name="due_date" value="{{ customer['due_date'] }}" required><br><br>
-            <select name="status">
-                <option value="ACTIVE" {% if customer['status'] == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
-                <option value="LOCKED" {% if customer['status'] == 'LOCKED' %}selected{% endif %}>LOCKED</option>
-            </select><br><br>
-            <button type="submit">Update</button>
-        </form>
-        <a href="/">Back</a>
+    <body style="font-family: Arial; padding: 20px; background: #f4f6f9;">
+        <div style="background: #fff; padding: 30px; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <h2 style="color: #007bff; margin-top: 0;">Edit Customer & Bio Details</h2>
+            <form method="POST">
+                <label><b>Name:</b></label><input type="text" name="name" value="{{ customer['name'] }}" required><br><br>
+                <label><b>Phone Model:</b></label><input type="text" name="phone_model" value="{{ customer['phone_model'] }}" required><br><br>
+                <label><b>IMEI / ID:</b></label><input type="text" name="imei" value="{{ customer['imei'] }}" required><br><br>
+                <label><b>Total Price:</b></label><input type="number" step="any" name="total_price" value="{{ customer['total_price'] }}" required><br><br>
+                <label><b>Advance Paid:</b></label><input type="number" step="any" name="advance_paid" value="{{ customer['advance_paid'] }}" required><br><br>
+                <label><b>Months:</b></label><input type="number" name="months" value="{{ customer['months'] }}" required><br><br>
+                <label><b>Remaining Balance:</b></label><input type="number" step="any" name="remaining_balance" value="{{ customer['remaining_balance'] }}" required><br><br>
+                <label><b>Monthly Installment:</b></label><input type="number" step="any" name="monthly_installment" value="{{ customer['monthly_installment'] }}" required><br><br>
+                <label><b>Due Date:</b></label><input type="date" name="due_date" value="{{ customer['due_date'] }}" required><br><br>
+                
+                <label><b>Customer Phone:</b></label><input type="text" name="customer_phone" value="{{ details['customer_phone'] if details else '' }}"><br><br>
+                <label><b>NIC Number:</b></label><input type="text" name="nic_number" value="{{ details['nic_number'] if details else '' }}"><br><br>
+                <label><b>Witness Name:</b></label><input type="text" name="witness_name" value="{{ details['witness_name'] if details else '' }}"><br><br>
+                <label><b>Witness Phone:</b></label><input type="text" name="witness_phone" value="{{ details['witness_phone'] if details else '' }}"><br><br>
+                <label><b>Address:</b></label><textarea name="address">{{ details['address'] if details else '' }}</textarea><br><br>
+                <label><b>Notes:</b></label><textarea name="notes">{{ details['notes'] if details else '' }}</textarea><br><br>
+
+                <label><b>Status:</b></label>
+                <select name="status">
+                    <option value="ACTIVE" {% if customer['status'] == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
+                    <option value="LOCKED" {% if customer['status'] == 'LOCKED' %}selected{% endif %}>LOCKED</option>
+                </select><br><br>
+                <button type="submit" style="background: #28a745; color: white; padding: 10px 15px; border: none; cursor: pointer; border-radius: 4px;">Update Record</button>
+            </form>
+            <br><a href="/">&larr; Back to Dashboard</a>
+        </div>
     </body>
     </html>
     """,
       customer=customer,
+      details=details,
   )
 
 
@@ -390,14 +486,38 @@ def customer_details(id):
       """
     <!DOCTYPE html>
     <html lang="en">
-    <head><meta charset="UTF-8"><title>Customer Details</title></head>
-    <body style="font-family: Arial; padding: 20px;">
-        <h2>Details for {{ customer['name'] }}</h2>
-        <p><b>Model:</b> {{ customer['phone_model'] }}</p>
-        <p><b>Total Price:</b> Rs. {{ customer['total_price'] }}</p>
-        <p><b>Remaining:</b> Rs. {{ customer['remaining_balance'] }}</p>
-        <hr>
-        <a href="/">Back to Dashboard</a>
+    <head><meta charset="UTF-8"><title>Customer Profile & Bio</title></head>
+    <body style="font-family: Arial; padding: 20px; background: #f4f6f9;">
+        <div style="background: #fff; padding: 30px; border-radius: 8px; max-width: 700px; margin: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <h2 style="color: #007bff; margin-top: 0;">👤 Full Profile: {{ customer['name'] }}</h2>
+            <hr>
+            <h3>📱 Phone & Installment Info</h3>
+            <p><b>Model:</b> {{ customer['phone_model'] }}</p>
+            <p><b>IMEI / ID:</b> {{ customer['imei'] }}</p>
+            <p><b>Android ID:</b> {{ customer['android_id'] if customer['android_id'] else 'Not Linked Yet' }}</p>
+            <p><b>Total Price:</b> Rs. {{ customer['total_price'] }}</p>
+            <p><b>Advance Paid:</b> Rs. {{ customer['advance_paid'] }}</p>
+            <p><b>Remaining Balance:</b> Rs. {{ customer['remaining_balance'] }}</p>
+            <p><b>Monthly Installment:</b> Rs. {{ customer['monthly_installment'] }}</p>
+            <p><b>Due Date:</b> {{ customer['due_date'] }}</p>
+            <p><b>Status:</b> <span style="color: {% if customer['status']=='ACTIVE' %}green{% else %}red{% endif %}; font-weight: bold;">{{ customer['status'] }}</span></p>
+
+            <hr>
+            <h3>📋 Bio & Verification Details</h3>
+            {% if details %}
+                <p><b>Customer Phone:</b> {{ details['customer_phone'] }}</p>
+                <p><b>NIC Number:</b> {{ details['nic_number'] }}</p>
+                <p><b>Witness Name:</b> {{ details['witness_name'] }}</p>
+                <p><b>Witness Phone:</b> {{ details['witness_phone'] }}</p>
+                <p><b>Home Address:</b> {{ details['address'] }}</p>
+                <p><b>Guarantee Notes:</b> {{ details['notes'] }}</p>
+            {% else %}
+                <p style="color: #777;">No detailed bio records found for this customer.</p>
+            {% endif %}
+
+            <hr>
+            <a href="/" style="background: #6c757d; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">&larr; Back to Dashboard</a>
+        </div>
     </body>
     </html>
     """,
@@ -414,6 +534,8 @@ def print_customer(id):
   cursor = conn.cursor()
   cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
   customer = cursor.fetchone()
+  cursor.execute('SELECT * FROM customer_details WHERE customer_id = ?', (id,))
+  details = cursor.fetchone()
   conn.close()
 
   if not customer:
@@ -423,20 +545,41 @@ def print_customer(id):
       """
     <!DOCTYPE html>
     <html lang="en">
-    <head><meta charset="UTF-8"><title>Print Invoice</title></head>
-    <body style="font-family: Arial; padding: 20px;" onload="window.print()">
-        <h2>BNS-GUARD-01 Invoice</h2>
-        <p><b>Customer Name:</b> {{ customer['name'] }}</p>
-        <p><b>Phone Model:</b> {{ customer['phone_model'] }}</p>
+    <head><meta charset="UTF-8"><title>Print Invoice & Agreement</title></head>
+    <body style="font-family: Arial; padding: 30px;" onload="window.print()">
+        <h2 style="text-align: center;">BNS-GUARD-01 - Installment & Guarantee Agreement</h2>
+        <hr>
+        <h3>Customer Details:</h3>
+        <p><b>Name:</b> {{ customer['name'] }}</p>
+        <p><b>Phone Model:</b> {{ customer['phone_model'] }} | <b>IMEI:</b> {{ customer['imei'] }}</p>
+        {% if details %}
+            <p><b>NIC Number:</b> {{ details['nic_number'] }}</p>
+            <p><b>Customer Phone:</b> {{ details['customer_phone'] }}</p>
+            <p><b>Address:</b> {{ details['address'] }}</p>
+            <hr>
+            <h3>Witness & Guarantee Details:</h3>
+            <p><b>Witness Name:</b> {{ details['witness_name'] }}</p>
+            <p><b>Witness Phone:</b> {{ details['witness_phone'] }}</p>
+            <p><b>Guarantee Remarks:</b> {{ details['notes'] }}</p>
+        {% endif %}
+        <hr>
+        <h3>Financial Summary:</h3>
         <p><b>Total Price:</b> Rs. {{ customer['total_price'] }}</p>
         <p><b>Advance Paid:</b> Rs. {{ customer['advance_paid'] }}</p>
         <p><b>Remaining Balance:</b> Rs. {{ customer['remaining_balance'] }}</p>
         <p><b>Monthly Installment:</b> Rs. {{ customer['monthly_installment'] }}</p>
         <p><b>Due Date:</b> {{ customer['due_date'] }}</p>
+        <br><br><br>
+        <div style="display: flex; justify-content: space-between;">
+            <p>_______________________<br>Customer Signature</p>
+            <p>_______________________<br>Witness Signature</p>
+            <p>_______________________<br>Authorized Signature</p>
+        </div>
     </body>
     </html>
     """,
       customer=customer,
+      details=details,
   )
 
 
