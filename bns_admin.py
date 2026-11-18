@@ -339,78 +339,110 @@ def edit_customer(id):
   if not customer:
     return 'Customer not found', 404
 
-  html_template = """
+  return render_template_string(
+      """
     <!DOCTYPE html>
     <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Edit Customer</title>
-        <style>
-            body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
-            .card { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-            h2 { color: #007bff; margin-top: 0; }
-            form { display: grid; gap: 15px; }
-            input, select { padding: 12px; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
-            button { background: #28a745; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 4px; font-size: 16px; }
-            button:hover { background: #218838; }
-            .back-link { display: inline-block; margin-top: 15px; text-decoration: none; color: #007bff; }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h2>Edit Customer Details</h2>
-            <form method="POST">
-                <div>
-                    <label><strong>Name:</strong></label>
-                    <input type="text" name="name" value="{{ customer['name'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Phone Model:</strong></label>
-                    <input type="text" name="phone_model" value="{{ customer['phone_model'] }}" required>
-                </div>
-                <div>
-                    <label><strong>IMEI / ID:</strong></label>
-                    <input type="text" name="imei" value="{{ customer['imei'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Total Price:</strong></label>
-                    <input type="number" step="any" name="total_price" value="{{ customer['total_price'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Advance Paid:</strong></label>
-                    <input type="number" step="any" name="advance_paid" value="{{ customer['advance_paid'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Months:</strong></label>
-                    <input type="number" name="months" value="{{ customer['months'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Remaining Balance:</strong></label>
-                    <input type="number" step="any" name="remaining_balance" value="{{ customer['remaining_balance'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Monthly Installment:</strong></label>
-                    <input type="number" step="any" name="monthly_installment" value="{{ customer['monthly_installment'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Due Date:</strong></label>
-                    <input type="date" name="due_date" value="{{ customer['due_date'] }}" required>
-                </div>
-                <div>
-                    <label><strong>Status:</strong></label>
-                    <select name="status">
-                        <option value="ACTIVE" {% if customer['status'] == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
-                        <option value="LOCKED" {% if customer['status'] == 'LOCKED' %}selected{% endif %}>LOCKED</option>
-                    </select>
-                </div>
-                <button type="submit">Update Customer</button>
-            </form>
-            <a href="/" class="back-link">&larr; Back to Dashboard</a>
-        </div>
+    <head><meta charset="UTF-8"><title>Edit Customer</title></head>
+    <body style="font-family: Arial; padding: 20px;">
+        <h2>Edit Customer Details</h2>
+        <form method="POST">
+            <input type="text" name="name" value="{{ customer['name'] }}" required><br><br>
+            <input type="text" name="phone_model" value="{{ customer['phone_model'] }}" required><br><br>
+            <input type="text" name="imei" value="{{ customer['imei'] }}" required><br><br>
+            <input type="number" step="any" name="total_price" value="{{ customer['total_price'] }}" required><br><br>
+            <input type="number" step="any" name="advance_paid" value="{{ customer['advance_paid'] }}" required><br><br>
+            <input type="number" name="months" value="{{ customer['months'] }}" required><br><br>
+            <input type="number" step="any" name="remaining_balance" value="{{ customer['remaining_balance'] }}" required><br><br>
+            <input type="number" step="any" name="monthly_installment" value="{{ customer['monthly_installment'] }}" required><br><br>
+            <input type="date" name="due_date" value="{{ customer['due_date'] }}" required><br><br>
+            <select name="status">
+                <option value="ACTIVE" {% if customer['status'] == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
+                <option value="LOCKED" {% if customer['status'] == 'LOCKED' %}selected{% endif %}>LOCKED</option>
+            </select><br><br>
+            <button type="submit">Update</button>
+        </form>
+        <a href="/">Back</a>
     </body>
     </html>
-    """
-  return render_template_string(html_template, customer=customer)
+    """,
+      customer=customer,
+  )
+
+
+@app.route('/customer/<int:id>')
+def customer_details(id):
+  conn = sqlite3.connect(DB_PATH)
+  conn.row_factory = sqlite3.Row
+  cursor = conn.cursor()
+  cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
+  customer = cursor.fetchone()
+  cursor.execute('SELECT * FROM customer_details WHERE customer_id = ?', (id,))
+  details = cursor.fetchone()
+  cursor.execute('SELECT * FROM payments WHERE customer_id = ?', (id,))
+  payments = cursor.fetchall()
+  conn.close()
+
+  if not customer:
+    return 'Customer not found', 404
+
+  return render_template_string(
+      """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="UTF-8"><title>Customer Details</title></head>
+    <body style="font-family: Arial; padding: 20px;">
+        <h2>Details for {{ customer['name'] }}</h2>
+        <p><b>Model:</b> {{ customer['phone_model'] }}</p>
+        <p><b>Total Price:</b> Rs. {{ customer['total_price'] }}</p>
+        <p><b>Remaining:</b> Rs. {{ customer['remaining_balance'] }}</p>
+        <hr>
+        <a href="/">Back to Dashboard</a>
+    </body>
+    </html>
+    """,
+      customer=customer,
+      details=details,
+      payments=payments,
+  )
+
+
+@app.route('/print/<int:id>')
+def print_customer(id):
+  conn = sqlite3.connect(DB_PATH)
+  conn.row_factory = sqlite3.Row
+  cursor = conn.cursor()
+  cursor.execute('SELECT * FROM customers WHERE id = ?', (id,))
+  customer = cursor.fetchone()
+  conn.close()
+
+  if not customer:
+    return 'Customer not found', 404
+
+  return render_template_string(
+      """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="UTF-8"><title>Print Invoice</title></head>
+    <body style="font-family: Arial; padding: 20px;" onload="window.print()">
+        <h2>BNS-GUARD-01 Invoice</h2>
+        <p><b>Customer Name:</b> {{ customer['name'] }}</p>
+        <p><b>Phone Model:</b> {{ customer['phone_model'] }}</p>
+        <p><b>Total Price:</b> Rs. {{ customer['total_price'] }}</p>
+        <p><b>Advance Paid:</b> Rs. {{ customer['advance_paid'] }}</p>
+        <p><b>Remaining Balance:</b> Rs. {{ customer['remaining_balance'] }}</p>
+        <p><b>Monthly Installment:</b> Rs. {{ customer['monthly_installment'] }}</p>
+        <p><b>Due Date:</b> {{ customer['due_date'] }}</p>
+    </body>
+    </html>
+    """,
+      customer=customer,
+  )
+
+
+@app.route('/portfolio/<int:id>')
+def portfolio(id):
+  return redirect(url_for('customer_details', id=id))
 
 
 @app.route('/delete/<int:id>')
@@ -487,9 +519,9 @@ def check_status():
 
   if row:
     status, remaining_balance = row[0], row[1]
-    if remaining_balance is not None and remaining_balance <= 0:
+    if remaining_balance is not None and float(remaining_balance) <= 0:
       return jsonify({'status': 'COMPLETED', 'command': 'release'})
-    elif status == 'LOCKED':
+    elif status and str(status).strip().upper() == 'LOCKED':
       return jsonify({'status': 'LOCKED', 'command': 'lock'})
 
   return jsonify({'status': 'ACTIVE', 'command': 'unlock'})
